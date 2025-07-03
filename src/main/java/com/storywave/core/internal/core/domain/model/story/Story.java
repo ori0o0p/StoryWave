@@ -113,7 +113,13 @@ public class Story {
     }
     
     public List<String> getPlayerIds() {
-        return new ArrayList<>(playerIds);
+        List<String> filtered = new ArrayList<>();
+        for (String id : playerIds) {
+            if (!"simulation-user".equals(id)) {
+                filtered.add(id);
+            }
+        }
+        return filtered;
     }
     
     public String getStartingPrompt() {
