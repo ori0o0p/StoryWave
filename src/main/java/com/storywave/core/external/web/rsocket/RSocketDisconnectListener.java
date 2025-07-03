@@ -4,6 +4,8 @@ import org.springframework.context.ApplicationListener;
 import org.springframework.messaging.rsocket.RSocketRequester;
 import org.springframework.messaging.rsocket.annotation.ConnectMapping;
 import org.springframework.stereotype.Component;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -16,6 +18,8 @@ import java.util.concurrent.ConcurrentHashMap;
 @Component
 public class RSocketDisconnectListener {
 
+    private static final Logger logger = LoggerFactory.getLogger(RSocketDisconnectListener.class);
+
     private final Map<String, RSocketRequester> requesterMap = new ConcurrentHashMap<>();
 
     /**
@@ -26,12 +30,12 @@ public class RSocketDisconnectListener {
                 .onClose()
                 .doFinally(signal -> {
                     requesterMap.remove(userId);
-                    System.out.println("사용자 연결 종료: " + userId);
+                    logger.info("사용자 연결 종료: {}", userId);
                 })
                 .subscribe();
 
         requesterMap.put(userId, requester);
-        System.out.println("사용자 연결 등록됨: " + userId);
+        logger.info("사용자 연결 등록됨: {}", userId);
     }
 
     /**
