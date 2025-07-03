@@ -11,12 +11,16 @@ import org.springframework.data.redis.serializer.Jackson2JsonRedisSerializer;
 import org.springframework.data.redis.serializer.RedisSerializationContext;
 import org.springframework.data.redis.serializer.StringRedisSerializer;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import jakarta.annotation.PostConstruct;
 
 @Configuration
 class RedisConfig {
 
+    private static final Logger logger = LoggerFactory.getLogger(RedisConfig.class);
+    
     private final ReactiveRedisConnectionFactory factory;
     
     public RedisConfig(ReactiveRedisConnectionFactory factory) {
@@ -28,10 +32,10 @@ class RedisConfig {
         try {
             // Redis 연결 테스트
             factory.getReactiveConnection().ping().block();
-            System.out.println("Redis 서버에 성공적으로 연결되었습니다.");
+            logger.info("Redis 서버에 성공적으로 연결되었습니다.");
         } catch (Exception e) {
-            System.err.println("Redis 서버 연결 실패: " + e.getMessage());
-            System.err.println("Redis 기능이 제한될 수 있습니다. 로컬 메모리 모드로 작동합니다.");
+            logger.error("Redis 서버 연결 실패: {}", e.getMessage());
+            logger.warn("Redis 기능이 제한될 수 있습니다. 로컬 메모리 모드로 작동합니다.");
         }
     }
 
