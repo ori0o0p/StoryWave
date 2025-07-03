@@ -3,6 +3,8 @@ package com.storywave.core.internal.core.domain.component.room;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.ReactiveRedisOperations;
 import org.springframework.stereotype.Component;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.storywave.core.internal.core.domain.model.room.GameRoom;
 
@@ -19,6 +21,7 @@ public class GameRoomManager {
     
     private static final String ROOM_KEY_PREFIX = "room:";
     
+    private static final Logger logger = LoggerFactory.getLogger(GameRoomManager.class);
     
     private final Map<String, GameRoom> gameRooms = new ConcurrentHashMap<>();
     
@@ -103,14 +106,14 @@ public class GameRoomManager {
             redisOperations.opsForSet().add(key, userId)
                 .subscribe(
                     result -> {},
-                    error -> System.err.println("Redis 방 멤버 추가 오류: " + error.getMessage())
+                    error -> logger.error("Redis 방 멤버 추가 오류: {}", error.getMessage())
                 );
             
             
             redisOperations.opsForValue().set("user:" + userId + ":room", room.getId())
                 .subscribe(
                     result -> {},
-                    error -> System.err.println("Redis 사용자-방 매핑 오류: " + error.getMessage())
+                    error -> logger.error("Redis 사용자-방 매핑 오류: {}", error.getMessage())
                 );
         }
     }
