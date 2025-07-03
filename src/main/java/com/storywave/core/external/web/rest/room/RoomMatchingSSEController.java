@@ -6,6 +6,8 @@ import com.storywave.core.internal.core.domain.component.room.WaitingQueueManage
 import com.storywave.core.internal.core.domain.event.room.RoomMatchingEvent;
 import com.storywave.core.internal.core.domain.model.room.GameRoom;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.codec.ServerSentEvent;
@@ -28,6 +30,8 @@ import java.util.Map;
 @RequestMapping("/api/room")
 class RoomMatchingSSEController {
 
+    private static final Logger logger = LoggerFactory.getLogger(RoomMatchingSSEController.class);
+
     private final WaitingQueueManager waitingQueueManager;
     private final GameRoomManager gameRoomManager;
     private final AuthService authService;
@@ -43,6 +47,7 @@ class RoomMatchingSSEController {
 
     @GetMapping(path = "/subscribe/{userId}", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     Flux<ServerSentEvent<Object>> subscribe(@PathVariable final String userId) {
+        logger.info("[SSE] 구독 시작: userId={}", userId);
         return authService.isValidGuestId(userId)
                 .flatMapMany(isValid -> {
                     if (!isValid) {
@@ -76,14 +81,14 @@ class RoomMatchingSSEController {
     }
 
     private Flux<ServerSentEvent<Object>> handleWaitingQueue(String userId) {
+        logger.info("[SSE] 대기열 진입 시도: userId={}", userId);
         return waitingQueueManager.addUser(userId)
                 .flatMapMany(added -> {
                     if (!added) {
-                        // 이미 대기열에 있는 경우 현재 상태만 반환
+                        logger.info("[SSE] 이미 대기열에 있음: userId={}", userId);
                         return createWaitingEventStream(userId);
                     }
-
-                    // 새로 대기열에 추가된 경우
+                    logger.info("[SSE] 대기열에 새로 추가됨: userId={}", userId);
                     return createWaitingEventStream(userId);
                 });
     }
@@ -151,6 +156,7 @@ class RoomMatchingSSEController {
     }
 
     private ServerSentEvent<Object> createMatchedEvent(final GameRoom room, final String userId) {
+        logger.info("[SSE] 매칭 성공: userId={}, roomId={}", userId, room.getId());
         RoomMatchingEvent event = new RoomMatchingEvent("MATCHED", room.getId(), room.getUserIds());
 
         return ServerSentEvent.builder()
