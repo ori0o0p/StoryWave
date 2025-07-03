@@ -3,6 +3,8 @@ package com.storywave.core.internal.core.domain.component.room;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.ReactiveRedisOperations;
 import org.springframework.stereotype.Component;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import reactor.core.publisher.Mono;
 
@@ -14,11 +16,15 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.concurrent.ConcurrentHashMap;
 
 @Component 
 public final class WaitingQueueManager {
 
+    private static final Logger logger = LoggerFactory.getLogger(WaitingQueueManager.class);
+
     private final Queue<String> waitingQueue = new ConcurrentLinkedQueue<>();
+    private final Set<String> waitingSet = ConcurrentHashMap.newKeySet();
     private final Lock reentrantLock = new ReentrantLock();
     private final GameRoomManager gameRoomManager;
     private final ReactiveRedisOperations<String, Object> redisOperations;
@@ -44,47 +50,40 @@ public final class WaitingQueueManager {
             return Mono.just(false);
         }
         return Mono.fromCallable(() -> {
-
-            if (waitingQueue.contains(userId)) {
+            // O(1) 중복 체크
+            if (!waitingSet.add(userId)) {
                 return false;
             }
-
-
             boolean added = waitingQueue.offer(userId);
-
-
+            if (!added) {
+                waitingSet.remove(userId); // offer 실패 시 Set 롤백
+                return false;
+            }
             if (added && useRedis) {
                 redisOperations.opsForList().rightPush(WAITING_QUEUE_KEY, userId)
                         .subscribe(
-                                result -> {
-                                },
-                                error -> System.err.println("Redis 대기열 추가 오류: " + error.getMessage())
+                                result -> {},
+                                error -> logger.error("Redis 대기열 추가 오류: {}", error.getMessage())
                         );
             }
-
-
             if (added) {
                 matchUsers();
             }
-
-            return added;
+            return true;
         });
     }
 
     public Mono<Boolean> removeUser(final String userId) {
         return Mono.fromCallable(() -> {
             boolean removed = waitingQueue.remove(userId);
-
-
+            waitingSet.remove(userId); // Set에서도 항상 제거
             if (removed && useRedis) {
                 redisOperations.opsForList().remove(WAITING_QUEUE_KEY, 0, userId)
                         .subscribe(
-                                result -> {
-                                },
-                                error -> System.err.println("Redis 대기열 삭제 오류: " + error.getMessage())
+                                result -> {},
+                                error -> logger.error("Redis 대기열 삭제 오류: {}", error.getMessage())
                         );
             }
-
             return removed;
         });
     }
@@ -97,22 +96,18 @@ public final class WaitingQueueManager {
         return requiredUsersForMatching;
     }
 
-    // WaitingQueueManager.java의 matchUsers() 메서드를 다음과 같이 수정하세요:
-
     private void matchUsers() {
-        // 동시성 제어
+        // 동시성 제어: 대기열 조작에만 Lock 최소화
         if (!reentrantLock.tryLock()) {
             return;
         }
-
+        List<String> matchedUsers = new ArrayList<>();
         try {
             // 필요한 인원이 모이지 않았으면 리턴
             if (waitingQueue.size() < requiredUsersForMatching) {
                 return;
             }
-
             // 필요한 인원만큼 대기열에서 추출
-            List<String> matchedUsers = new ArrayList<>();
             for (int i = 0; i < requiredUsersForMatching; i++) {
                 String userId = waitingQueue.poll();
                 if (userId == null) {
@@ -123,36 +118,33 @@ public final class WaitingQueueManager {
                     continue;
                 }
                 matchedUsers.add(userId);
+                waitingSet.remove(userId); // Set에서도 제거
             }
-
             // 인원이 부족하면 다시 대기열에 추가
             if (matchedUsers.size() < requiredUsersForMatching) {
                 waitingQueue.addAll(matchedUsers);
+                waitingSet.addAll(matchedUsers);
                 return;
             }
-
-            // 방 생성 및 게임 시작
-            final Set<String> userSet = new HashSet<>(matchedUsers);
-            gameRoomManager.createRoom(userSet).subscribe(room -> {
-                // 방을 활성화하고 게임 시작 상태로 변경
-                room.setActive(true);
-                room.startGame();
-
-                System.out.println("방이 생성되고 게임이 시작되었습니다. ID: " + room.getId() + ", 참여자: " + userSet);
-
-                // Redis에서 대기열 삭제
-                if (useRedis) {
-                    for (String userId : userSet) {
-                        redisOperations.opsForList().remove(WAITING_QUEUE_KEY, 0, userId)
-                                .subscribe(
-                                        result -> {},
-                                        error -> System.err.println("방 생성 후 Redis 대기열 삭제 오류: " + error.getMessage())
-                                );
-                    }
-                }
-            });
         } finally {
             reentrantLock.unlock();
         }
+        // 방 생성 및 게임 시작(이 부분은 Lock 밖에서 처리)
+        final Set<String> userSet = new HashSet<>(matchedUsers);
+        gameRoomManager.createRoom(userSet).subscribe(room -> {
+            room.setActive(true);
+            room.startGame();
+            logger.info("방이 생성되고 게임이 시작되었습니다. ID: {}, 참여자: {}", room.getId(), userSet);
+            // Redis에서 대기열 삭제
+            if (useRedis) {
+                for (String userId : userSet) {
+                    redisOperations.opsForList().remove(WAITING_QUEUE_KEY, 0, userId)
+                            .subscribe(
+                                    result -> {},
+                                    error -> logger.error("방 생성 후 Redis 대기열 삭제 오류: {}", error.getMessage())
+                            );
+                }
+            }
+        });
     }
 }
