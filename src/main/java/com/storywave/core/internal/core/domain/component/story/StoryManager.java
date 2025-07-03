@@ -53,7 +53,14 @@ public class StoryManager {
             String startingPrompt = "어느날 학교에서...";
             
             
-            Story story = new Story(roomId, new ArrayList<>(room.getUserIds()), startingPrompt, defaultMaxRound);
+            // simulation-user는 스토리에 포함하지 않음
+            List<String> filteredUserIds = new ArrayList<>();
+            for (String id : room.getUserIds()) {
+                if (!"simulation-user".equals(id)) {
+                    filteredUserIds.add(id);
+                }
+            }
+            Story story = new Story(roomId, filteredUserIds, startingPrompt, defaultMaxRound);
             
             
             stories.put(roomId, story);
