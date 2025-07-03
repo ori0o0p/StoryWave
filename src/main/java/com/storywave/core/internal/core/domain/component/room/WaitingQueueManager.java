@@ -39,6 +39,10 @@ public final class WaitingQueueManager {
     }
 
     public Mono<Boolean> addUser(final String userId) {
+        // simulation-user는 무시
+        if ("simulation-user".equals(userId)) {
+            return Mono.just(false);
+        }
         return Mono.fromCallable(() -> {
 
             if (waitingQueue.contains(userId)) {
@@ -113,6 +117,10 @@ public final class WaitingQueueManager {
                 String userId = waitingQueue.poll();
                 if (userId == null) {
                     break;
+                }
+                // simulation-user는 매칭에서 제외
+                if ("simulation-user".equals(userId)) {
+                    continue;
                 }
                 matchedUsers.add(userId);
             }
