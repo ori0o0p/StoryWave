@@ -40,14 +40,20 @@ public class GameRoomManager {
     
     public Mono<GameRoom> createRoom(final Set<String> userIds) {
         return Mono.fromCallable(() -> {
-            
-            GameRoom room = new GameRoom(userIds);
+            // simulation-user는 방에 포함하지 않음
+            Set<String> filteredUserIds = new java.util.HashSet<>();
+            for (String id : userIds) {
+                if (!"simulation-user".equals(id)) {
+                    filteredUserIds.add(id);
+                }
+            }
+            GameRoom room = new GameRoom(filteredUserIds);
             
             
             gameRooms.put(room.getId(), room);
             
             
-            for (String userId : userIds) {
+            for (String userId : filteredUserIds) {
                 userRoomMap.put(userId, room.getId());
             }
             
