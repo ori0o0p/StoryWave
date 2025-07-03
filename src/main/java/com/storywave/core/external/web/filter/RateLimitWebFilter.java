@@ -9,6 +9,8 @@ import org.springframework.web.server.WebFilterChain;
 import com.storywave.core.external.web.rest.auth.rate.RequestRateLimiter;
 
 import reactor.core.publisher.Mono;
+import java.util.Optional;
+import java.util.stream.Stream;
 
 @Component
 public class RateLimitWebFilter implements WebFilter {
@@ -46,25 +48,16 @@ public class RateLimitWebFilter implements WebFilter {
     }
 
     private String getClientIpAddress(final ServerWebExchange exchange) {
-        String ipAddress = exchange.getRequest().getHeaders().getFirst("X-Forwarded-For");
-        
-        if (ipAddress == null || ipAddress.isEmpty() || "unknown".equalsIgnoreCase(ipAddress)) {
-            ipAddress = exchange.getRequest().getHeaders().getFirst("Proxy-Client-IP");
-        }
-        
-        if (ipAddress == null || ipAddress.isEmpty() || "unknown".equalsIgnoreCase(ipAddress)) {
-            ipAddress = exchange.getRequest().getHeaders().getFirst("WL-Proxy-Client-IP");
-        }
-        
-        if (ipAddress == null || ipAddress.isEmpty() || "unknown".equalsIgnoreCase(ipAddress)) {
-            ipAddress = exchange.getRequest().getRemoteAddress().getAddress().getHostAddress();
-        }
-        
-        
-        if (ipAddress != null && ipAddress.contains(",")) {
-            ipAddress = ipAddress.split(",")[0].trim();
-        }
-        
-        return ipAddress;
+        return Stream.of(
+                exchange.getRequest().getHeaders().getFirst("X-Forwarded-For"),
+                exchange.getRequest().getHeaders().getFirst("Proxy-Client-IP"),
+                exchange.getRequest().getHeaders().getFirst("WL-Proxy-Client-IP"),
+                Optional.ofNullable(exchange.getRequest().getRemoteAddress())
+                        .map(addr -> addr.getAddress().getHostAddress()).orElse(null)
+        )
+        .filter(ip -> ip != null && !ip.isEmpty() && !"unknown".equalsIgnoreCase(ip))
+        .findFirst()
+        .map(ip -> ip.contains(",") ? ip.split(",")[0].trim() : ip)
+        .orElse("");
     }
 } 
