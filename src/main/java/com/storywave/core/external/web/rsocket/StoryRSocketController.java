@@ -5,6 +5,8 @@ import com.storywave.core.internal.core.domain.component.story.StoryManager;
 import com.storywave.core.internal.core.domain.event.story.StoryEvent;
 import com.storywave.core.internal.core.domain.model.story.Story;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.messaging.handler.annotation.DestinationVariable;
 import org.springframework.messaging.handler.annotation.MessageMapping;
 import org.springframework.messaging.handler.annotation.Payload;
@@ -22,6 +24,8 @@ import java.util.concurrent.ConcurrentHashMap;
 
 @Controller
 public class StoryRSocketController {
+    
+    private static final Logger logger = LoggerFactory.getLogger(StoryRSocketController.class);
     
     private final StoryManager storyManager;
     private final GameRoomManager gameRoomManager;
@@ -41,14 +45,14 @@ public class StoryRSocketController {
         requester.rsocket()
                 .onClose()
                 .doFinally(signal -> {
-                    System.out.println("기본 연결 종료");
+                    logger.info("기본 연결 종료");
                 })
                 .subscribe(
                     null,
-                    error -> System.err.println("기본 RSocket 연결 오류: " + error.getMessage())
+                    error -> logger.error("기본 RSocket 연결 오류: {}", error.getMessage())
                 );
 
-        System.out.println("새로운 RSocket 연결 성립");
+        logger.info("새로운 RSocket 연결 성립");
     }
 
     @ConnectMapping("user.{userId}")
@@ -58,11 +62,10 @@ public class StoryRSocketController {
 
     @MessageMapping("user.{userId}")
     public Mono<Map<String, Object>> registerUser(@DestinationVariable final String userId) {
-        System.out.println("사용자 등록 요청: " + userId);
-        // 이미 등록된 사용자인지 확인
+        logger.info("사용자 등록 요청: {}", userId);
         boolean isRegistered = disconnectListener.isUserConnected(userId);
         if (!isRegistered) {
-            System.out.println("등록되지 않은 사용자: " + userId);
+            logger.info("등록되지 않은 사용자: {}", userId);
         }
         Map<String, Object> response = new HashMap<>();
         response.put("registered", isRegistered);
@@ -72,17 +75,17 @@ public class StoryRSocketController {
     
     @MessageMapping("story.room.{roomId}")
     public Flux<Map<String, Object>> subscribeStory(@DestinationVariable final String roomId) {
-        System.out.println("방 구독 요청 받음: " + roomId);
+        logger.info("방 구독 요청 받음: {}", roomId);
         return gameRoomManager.getRoomById(roomId)
-                .doOnNext(room -> System.out.println("방 찾음: " + room))
+                .doOnNext(room -> logger.info("방 찾음: {}", room))
                 .flatMap(room ->
                         storyManager.getStoryByRoomId(roomId)
                             .switchIfEmpty(Mono.defer(() -> {
-                                System.out.println("새 스토리 생성: " + roomId);
+                                logger.info("새 스토리 생성: {}", roomId);
                                 return storyManager.createStory(room);
                             }))
                 )
-                .doOnNext(story -> System.out.println("스토리 로드됨: " + story.getId()))
+                .doOnNext(story -> logger.info("스토리 로드됨: {}", story.getId()))
                 .map(story -> {
                     StoryEvent.EventType eventType = story.isCompleted() ? StoryEvent.EventType.STORY_COMPLETED : StoryEvent.EventType.STORY_CREATED;
                     StoryEvent initialEvent = new StoryEvent(eventType, story);
@@ -100,7 +103,7 @@ public class StoryRSocketController {
                                         })
                         )
                 )
-                .doOnError(e -> System.err.println("스토리 구독 오류: " + e.getMessage()))
+                .doOnError(e -> logger.error("스토리 구독 오류: {}", e.getMessage()))
                 .onErrorResume(e -> {
                     Map<String, Object> errorMap = new HashMap<>();
                     errorMap.put("error", "스토리 구독 실패");
@@ -141,10 +144,10 @@ public class StoryRSocketController {
     
     @MessageMapping("story.info.{storyId}")
     public Mono<Map<String, Object>> getStoryInfo(@DestinationVariable final String storyId) {
-        System.out.println("스토리 정보 요청: " + storyId);
+        logger.info("스토리 정보 요청: {}", storyId);
         return storyManager.getStoryById(storyId)
                 .map(this::convertStoryToMap)
-                .doOnError(e -> System.err.println("스토리 정보 조회 오류: " + e.getMessage()))
+                .doOnError(e -> logger.error("스토리 정보 조회 오류: {}", e.getMessage()))
                 .onErrorResume(e -> {
                     Map<String, Object> errorMap = new HashMap<>();
                     errorMap.put("error", "스토리 정보 조회 실패");
