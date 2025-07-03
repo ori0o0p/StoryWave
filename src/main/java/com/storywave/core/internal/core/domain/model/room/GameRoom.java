@@ -43,7 +43,14 @@ public class GameRoom {
     }
     
     public Set<String> getUserIds() {
-        return Collections.unmodifiableSet(userIds);
+        // simulation-user는 반환하지 않음
+        Set<String> filtered = new HashSet<>();
+        for (String id : userIds) {
+            if (!"simulation-user".equals(id)) {
+                filtered.add(id);
+            }
+        }
+        return Collections.unmodifiableSet(filtered);
     }
     
     public LocalDateTime getCreatedAt() {
